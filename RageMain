@@ -1,0 +1,279 @@
+-- [[ RageMenu V36 - SOUNDS & NOTIFICATIONS UPDATE ]] --
+-- ВЕСЬ КОД V24 | БИНДЫ | УВЕДОМЛЕНИЯ | ЗВУКИ ПРИ ПЕРЕКЛЮЧЕНИИ
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+local Camera = Workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+-- [[ GLOBAL CONFIG ]] --
+_G.Config = {
+    AimbotEnabled = false,
+    RagebotEnabled = false,
+    TriggerbotEnabled = false,
+    TeamCheck = true,
+    WallCheck = true,
+    AimPart = "Head",
+    Smoothness = 0,
+    FieldOfView = 100,
+    ShowFOVCircle = true,
+    TriggerDelay = 0,
+    
+    Binds = {
+        RagebotEnabled = nil,
+        AimbotEnabled = nil,
+        TriggerbotEnabled = nil
+    },
+    
+    EspBoxes = false,
+    EspTracers = false,
+    EspBones = false,
+    
+    BoxColor = Color3.fromRGB(255, 0, 0),
+    TracerColor = Color3.fromRGB(255, 0, 0),
+    BoneColor = Color3.fromRGB(255, 255, 255),
+    MenuAccent = Color3.fromRGB(255, 0, 0),
+    Background = Color3.fromRGB(5, 5, 5)
+}
+
+local IsRightMBDown = false
+local CurrentTarget = nil
+local BindingInProgress = nil
+
+-- [ SOUND SYSTEM ] --
+local function PlayNotifySound()
+    local sound = Instance.new("Sound")
+    sound.SoundId = "rbxassetid://452267918" -- Технологичный "бип"
+    sound.Volume = 1
+    sound.Parent = game:GetService("SoundService")
+    sound:Play()
+    sound.Ended:Connect(function() sound:Destroy() end)
+end
+
+-- [ NOTIFICATION SYSTEM ] --
+local ScreenGui = Instance.new("ScreenGui", game:GetService("CoreGui"))
+ScreenGui.Name = "RageMenu_V37"
+ScreenGui.ResetOnSpawn = false
+
+local NotifyHolder = Instance.new("Frame", ScreenGui)
+NotifyHolder.Size = UDim2.new(0, 250, 1, -20); NotifyHolder.Position = UDim2.new(1, -260, 0, 10); NotifyHolder.BackgroundTransparency = 1
+local NotifyList = Instance.new("UIListLayout", NotifyHolder); NotifyList.VerticalAlignment = "Bottom"; NotifyList.Padding = UDim.new(0, 8)
+
+local function Notify(text)
+    PlayNotifySound() -- Воспроизводим звук при каждом вызове уведомления
+    local n = Instance.new("Frame", NotifyHolder)
+    n.Size = UDim2.new(1, 0, 0, 40); n.BackgroundColor3 = _G.Config.Background; n.BorderSizePixel = 0
+    Instance.new("UICorner", n); local s = Instance.new("UIStroke", n); s.Color = _G.Config.MenuAccent
+    local t = Instance.new("TextLabel", n); t.Size = UDim2.new(1, 0, 1, 0); t.BackgroundTransparency = 1
+    t.Text = text; t.TextColor3 = Color3.new(1,1,1); t.Font = "GothamBold"; t.TextSize = 13
+    n.Position = UDim2.new(1.5, 0, 0, 0)
+    TweenService:Create(n, TweenInfo.new(0.3), {Position = UDim2.new(0,0,0,0)}):Play()
+    task.delay(2.5, function()
+        TweenService:Create(n, TweenInfo.new(0.3), {Position = UDim2.new(1.5,0,0,0)}):Play()
+        task.wait(0.3); n:Destroy()
+    end)
+end
+
+-- [ DRAWING UTILS ] --
+local function CreateDrawing(class, props)
+    local obj = Drawing.new(class)
+    for i, v in pairs(props) do obj[i] = v end
+    return obj
+end
+
+local FOVCircle = CreateDrawing("Circle", {Thickness = 1.5, Color = _G.Config.MenuAccent, Transparency = 1, Filled = false, Visible = false})
+
+-- [ MAIN MENU ] --
+local Main = Instance.new("Frame", ScreenGui)
+Main.Size = UDim2.new(0, 640, 0, 660); Main.Position = UDim2.new(0.5, -320, 0.5, -330)
+Main.BackgroundColor3 = _G.Config.Background; Main.Active = true; Main.Draggable = true
+Instance.new("UICorner", Main); Instance.new("UIStroke", Main).Color = _G.Config.MenuAccent
+
+-- Header (V24 Style)
+local Header = Instance.new("Frame", Main); Header.Size = UDim2.new(1, 0, 0, 110); Header.BackgroundTransparency = 1
+local Logo = Instance.new("ImageLabel", Header); Logo.Size = UDim2.new(0, 85, 0, 85); Logo.Position = UDim2.new(0, 20, 0, 12); Logo.BackgroundTransparency = 1
+Logo.Image = "rbxassetid://6031094678"; Logo.ImageColor3 = _G.Config.MenuAccent
+local Title = Instance.new("TextLabel", Header); Title.Size = UDim2.new(1, -120, 1, 0); Title.Position = UDim2.new(0, 120, 0, 0)
+Title.Text = "RageMenu V24"; Title.Font = "GothamBold"; Title.TextSize = 44; Title.TextColor3 = Color3.new(1, 1, 1); Title.TextXAlignment = "Left"; Title.BackgroundTransparency = 1
+
+-- Navigation
+local Nav = Instance.new("Frame", Main); Nav.Position = UDim2.new(0, 20, 0, 125); Nav.Size = UDim2.new(0, 180, 1, -145); Nav.BackgroundTransparency = 1
+local Pages = Instance.new("Frame", Main); Pages.Position = UDim2.new(0, 220, 0, 125); Pages.Size = UDim2.new(1, -240, 1, -145); Pages.BackgroundTransparency = 1
+
+local AimTab = Instance.new("ScrollingFrame", Pages); local VisTab = Instance.new("ScrollingFrame", Pages)
+for _, t in pairs({AimTab, VisTab}) do t.Size = UDim2.new(1,0,1,0); t.BackgroundTransparency = 1; t.ScrollBarThickness = 2; t.Visible = false; t.CanvasSize = UDim2.new(0,0,2,0) end
+AimTab.Visible = true
+
+local function AddNav(name, pos, page)
+    local b = Instance.new("TextButton", Nav); b.Size = UDim2.new(1, 0, 0, 60); b.Position = pos; b.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    b.Text = name; b.TextColor3 = Color3.new(1, 1, 1); b.Font = "GothamBold"; b.TextSize = 20; Instance.new("UICorner", b)
+    b.MouseButton1Click:Connect(function() AimTab.Visible = false; VisTab.Visible = false; page.Visible = true end)
+end
+AddNav("COMBAT", UDim2.new(0,0,0,0), AimTab); AddNav("VISUALS", UDim2.new(0,0,0,70), VisTab)
+
+-- UI Components with Sound
+local function AddBindToggle(parent, label, key, pos)
+    local Container = Instance.new("Frame", parent); Container.Size = UDim2.new(1, -15, 0, 50); Container.Position = pos; Container.BackgroundTransparency = 1
+    local b = Instance.new("TextButton", Container); b.Size = UDim2.new(0.7, -5, 1, 0); b.BackgroundColor3 = _G.Config[key] and _G.Config.MenuAccent or Color3.fromRGB(30, 30, 30)
+    b.Text = label .. ": " .. (_G.Config[key] and "ON" or "OFF"); b.TextColor3 = Color3.new(1, 1, 1); b.Font = "GothamBold"; b.TextSize = 16; Instance.new("UICorner", b)
+    local bindBtn = Instance.new("TextButton", Container); bindBtn.Size = UDim2.new(0.3, 0, 1, 0); bindBtn.Position = UDim2.new(0.7, 5, 0, 0); bindBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    bindBtn.Text = "[NONE]"; bindBtn.TextColor3 = Color3.new(1, 1, 1); bindBtn.Font = "GothamBold"; bindBtn.TextSize = 12; Instance.new("UICorner", bindBtn)
+
+    local function Toggle()
+        _G.Config[key] = not _G.Config[key]
+        b.Text = label .. ": " .. (_G.Config[key] and "ON" or "OFF")
+        b.BackgroundColor3 = _G.Config[key] and _G.Config.MenuAccent or Color3.fromRGB(30, 30, 30)
+        Notify(label .. " -> " .. (_G.Config[key] and "ON" or "OFF"))
+    end
+    b.MouseButton1Click:Connect(Toggle)
+    bindBtn.MouseButton1Click:Connect(function() BindingInProgress = key; bindBtn.Text = "..." end)
+    UserInputService.InputBegan:Connect(function(i, gpe)
+        if BindingInProgress == key and i.UserInputType == Enum.UserInputType.Keyboard then
+            _G.Config.Binds[key] = i.KeyCode; bindBtn.Text = "["..i.KeyCode.Name.."]"; BindingInProgress = nil
+        elseif not gpe and _G.Config.Binds[key] == i.KeyCode then Toggle() end
+    end)
+end
+
+local function AddToggle(parent, label, key, pos)
+    local b = Instance.new("TextButton", parent); b.Size = UDim2.new(1, -15, 0, 50); b.Position = pos; b.BackgroundColor3 = _G.Config[key] and _G.Config.MenuAccent or Color3.fromRGB(30, 30, 30)
+    b.Text = label .. ": " .. (_G.Config[key] and "ON" or "OFF"); b.TextColor3 = Color3.new(1, 1, 1); b.Font = "GothamBold"; b.TextSize = 16; Instance.new("UICorner", b)
+    b.MouseButton1Click:Connect(function() 
+        _G.Config[key] = not _G.Config[key]
+        b.Text = label .. ": " .. (_G.Config[key] and "ON" or "OFF")
+        b.BackgroundColor3 = _G.Config[key] and _G.Config.MenuAccent or Color3.fromRGB(30, 30, 30)
+        Notify(label .. " updated")
+    end)
+end
+
+local function AddSlider(parent, label, key, min, max, pos)
+    local t = Instance.new("TextLabel", parent); t.Size = UDim2.new(1, -15, 0, 30); t.Position = pos; t.BackgroundTransparency = 1; t.TextColor3 = Color3.new(1, 1, 1); t.Text = label .. ": " .. math.floor(_G.Config[key]); t.Font = "GothamBold"; t.TextXAlignment = "Left"
+    local b = Instance.new("Frame", parent); b.Size = UDim2.new(1, -15, 0, 14); b.Position = pos + UDim2.new(0, 0, 0, 35); b.BackgroundColor3 = Color3.fromRGB(40, 40, 40); Instance.new("UICorner", b)
+    local f = Instance.new("Frame", b); f.Size = UDim2.new((_G.Config[key]-min)/(max-min), 0, 1, 0); f.BackgroundColor3 = _G.Config.MenuAccent; Instance.new("UICorner", f)
+    b.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then local c; c = RunService.RenderStepped:Connect(function()
+        local rel = math.clamp((UserInputService:GetMouseLocation().X - b.AbsolutePosition.X) / b.AbsoluteSize.X, 0, 1)
+        _G.Config[key] = min + (max - min) * rel; f.Size = UDim2.new(rel, 0, 1, 0); t.Text = label .. ": " .. math.floor(_G.Config[key])
+    end) UserInputService.InputEnded:Connect(function(e) if e.UserInputType == Enum.UserInputType.MouseButton1 then c:Disconnect() end end) end end)
+end
+
+-- POPULATE TABS
+AddBindToggle(AimTab, "Ragebot", "RagebotEnabled", UDim2.new(0, 0, 0, 0))
+AddBindToggle(AimTab, "Aimbot", "AimbotEnabled", UDim2.new(0, 0, 0, 60))
+AddBindToggle(AimTab, "Triggerbot", "TriggerbotEnabled", UDim2.new(0, 0, 0, 120))
+AddToggle(AimTab, "Wall Check", "WallCheck", UDim2.new(0, 0, 0, 180))
+AddToggle(AimTab, "Team Check", "TeamCheck", UDim2.new(0, 0, 0, 240))
+AddSlider(AimTab, "Field of View", "FieldOfView", 10, 800, UDim2.new(0, 0, 0, 300))
+AddSlider(AimTab, "Smoothness", "Smoothness", 0, 100, UDim2.new(0, 0, 0, 365))
+
+AddToggle(VisTab, "Show Tracers", "EspTracers", UDim2.new(0, 0, 0, 0))
+AddToggle(VisTab, "Show Bones", "EspBones", UDim2.new(0, 0, 0, 60))
+AddToggle(VisTab, "Show Boxes", "EspBoxes", UDim2.new(0, 0, 0, 120))
+
+-- [[ CORE LOGIC (V24 FULL) ]] --
+local function CheckVisibility(part)
+    if not _G.Config.WallCheck then return true end
+    local char = LocalPlayer.Character
+    if not char then return false end
+    local params = RaycastParams.new()
+    params.FilterDescendantsInstances = {char, Camera}
+    params.FilterType = Enum.RaycastFilterType.Blacklist
+    local ray = Workspace:Raycast(Camera.CFrame.Position, (part.Position - Camera.CFrame.Position).Unit * 1000, params)
+    return (ray and ray.Instance:IsDescendantOf(part.Parent))
+end
+
+local function GetTarget()
+    local target, dist = nil, math.huge
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild(_G.Config.AimPart) then
+            if p.Character.Humanoid.Health > 0 and (not _G.Config.TeamCheck or p.Team ~= LocalPlayer.Team) then
+                local part = p.Character[_G.Config.AimPart]
+                if CheckVisibility(part) then
+                    local sPos, os = Camera:WorldToViewportPoint(part.Position)
+                    if _G.Config.RagebotEnabled then
+                        local d3 = (part.Position - (LocalPlayer.Character and LocalPlayer.Character.PrimaryPart and LocalPlayer.Character.PrimaryPart.Position or Vector3.new())).Magnitude
+                        if d3 < dist then target = p; dist = d3 end
+                    elseif _G.Config.AimbotEnabled and os then
+                        local d2 = (Vector2.new(sPos.X, sPos.Y) - UserInputService:GetMouseLocation()).Magnitude
+                        if d2 < _G.Config.FieldOfView and d2 < dist then target = p; dist = d2 end
+                    end
+                end
+            end
+        end
+    end
+    return target
+end
+
+RunService.RenderStepped:Connect(function()
+    FOVCircle.Visible = _G.Config.ShowFOVCircle and not _G.Config.RagebotEnabled
+    FOVCircle.Radius = _G.Config.FieldOfView; FOVCircle.Position = UserInputService:GetMouseLocation()
+    if _G.Config.RagebotEnabled or (IsRightMBDown and _G.Config.AimbotEnabled) then
+        CurrentTarget = GetTarget()
+        if CurrentTarget then
+            local pos = CurrentTarget.Character[_G.Config.AimPart].Position
+            if _G.Config.RagebotEnabled then Camera.CFrame = CFrame.new(Camera.CFrame.Position, pos)
+            else Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, pos), 1-(_G.Config.Smoothness/100)) end
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(0.01) do
+        if _G.Config.TriggerbotEnabled or _G.Config.RagebotEnabled then
+            local shot = false
+            if _G.Config.RagebotEnabled and CurrentTarget then shot = true
+            else
+                local ray = Camera:ViewportPointToRay(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+                local res = Workspace:Raycast(ray.Origin, ray.Direction * 1000)
+                if res and res.Instance then
+                    local p = Players:GetPlayerFromCharacter(res.Instance.Parent) or Players:GetPlayerFromCharacter(res.Instance.Parent.Parent)
+                    if p and p ~= LocalPlayer and p.Character.Humanoid.Health > 0 then shot = (not _G.Config.TeamCheck or p.Team ~= LocalPlayer.Team) end
+                end
+            end
+            if shot then mouse1press(); task.wait(0.01); mouse1release() end
+        end
+    end
+end)
+
+-- [ ESP LOGIC (V24 FULL) ] --
+local function InitESP(p)
+    local T = CreateDrawing("Line", {Thickness = 1.5, Color = _G.Config.TracerColor, Visible = false})
+    local B = CreateDrawing("Square", {Thickness = 1.5, Color = _G.Config.BoxColor, Filled = false, Visible = false})
+    local S = {}; for i=1,10 do S[i] = CreateDrawing("Line", {Thickness = 1.2, Color = _G.Config.BoneColor, Visible = false}) end
+    local Map = {{"Head", "UpperTorso"}, {"UpperTorso", "LowerTorso"}, {"UpperTorso", "LeftUpperArm"}, {"LeftUpperArm", "LeftLowerArm"}, {"UpperTorso", "RightUpperArm"}, {"RightUpperArm", "RightLowerArm"}, {"LowerTorso", "LeftUpperLeg"}, {"LeftUpperLeg", "LeftLowerLeg"}, {"LowerTorso", "RightUpperLeg"}, {"RightUpperLeg", "RightLowerLeg"}}
+
+    RunService.RenderStepped:Connect(function()
+        if not p.Parent or not p.Character or p.Character.Humanoid.Health <= 0 then T.Visible = false; B.Visible = false; for _,v in pairs(S) do v.Visible = false end return end
+        local r = p.Character:FindFirstChild("HumanoidRootPart")
+        if r and p ~= LocalPlayer and (not _G.Config.TeamCheck or p.Team ~= LocalPlayer.Team) then
+            local pos, os = Camera:WorldToViewportPoint(r.Position)
+            if os then
+                if _G.Config.EspTracers then T.Visible = true; T.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y); T.To = Vector2.new(pos.X, pos.Y) else T.Visible = false end
+                if _G.Config.EspBoxes then
+                    local t = Camera:WorldToViewportPoint(r.Position + Vector3.new(0, 3.8, 0)); local b = Camera:WorldToViewportPoint(r.Position + Vector3.new(0, -4.5, 0)); local h = math.abs(t.Y - b.Y)
+                    B.Visible = true; B.Size = Vector2.new(h*0.6, h); B.Position = Vector2.new(pos.X-B.Size.X/2, pos.Y-B.Size.Y/2)
+                else B.Visible = false end
+                if _G.Config.EspBones then
+                    for i, v in pairs(Map) do
+                        local p1, p2 = p.Character:FindFirstChild(v[1]), p.Character:FindFirstChild(v[2])
+                        if p1 and p2 then
+                            local v1, os1 = Camera:WorldToViewportPoint(p1.Position); local v2, os2 = Camera:WorldToViewportPoint(p2.Position)
+                            if os1 and os2 then S[i].Visible = true; S[i].From = Vector2.new(v1.X,v1.Y); S[i].To = Vector2.new(v2.X,v2.Y) else S[i].Visible = false end
+                        else S[i].Visible = false end
+                    end
+                else for _, v in pairs(S) do v.Visible = false end end
+            else T.Visible = false; B.Visible = false; for _,v in pairs(S) do v.Visible = false end end
+        else T.Visible = false; B.Visible = false; for _,v in pairs(S) do v.Visible = false end end
+    end)
+end
+
+for _, p in pairs(Players:GetPlayers()) do InitESP(p) end
+Players.PlayerAdded:Connect(InitESP)
+
+-- Toggle Menu
+UserInputService.InputBegan:Connect(function(i, gpe)
+    if not gpe and i.KeyCode == Enum.KeyCode.RightShift then Main.Visible = not Main.Visible end
+    if i.UserInputType == Enum.UserInputType.MouseButton2 then IsRightMBDown = true end
+end)
+UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton2 then IsRightMBDown = false end end)
