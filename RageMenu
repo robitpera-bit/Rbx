@@ -11,7 +11,7 @@ local LocalPlayer = Players.LocalPlayer
 
 -- [[ GLOBAL CONFIG ]] --
 _G.Config = {
-    AimbotEnabled = true,
+    AimbotEnabled = false,
     RagebotEnabled = false,
     TriggerbotEnabled = false,
     TeamCheck = true,
@@ -28,9 +28,9 @@ _G.Config = {
         TriggerbotEnabled = nil
     },
     
-    EspBoxes = true,
-    EspTracers = true,
-    EspBones = true,
+    EspBoxes = false,
+    EspTracers = false,
+    EspBones = false,
     
     BoxColor = Color3.fromRGB(255, 0, 0),
     TracerColor = Color3.fromRGB(255, 0, 0),
