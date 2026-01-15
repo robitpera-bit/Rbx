@@ -159,9 +159,9 @@ local function AddSlider(parent, label, key, min, max, pos)
 end
 
 -- POPULATE TABS
-AddBindToggle(AimTab, "Ragebot 360", "RagebotEnabled", UDim2.new(0, 0, 0, 0))
-AddBindToggle(AimTab, "Legit Aimbot", "AimbotEnabled", UDim2.new(0, 0, 0, 60))
-AddBindToggle(AimTab, "Hyper Trigger", "TriggerbotEnabled", UDim2.new(0, 0, 0, 120))
+AddBindToggle(AimTab, "Ragebot", "RagebotEnabled", UDim2.new(0, 0, 0, 0))
+AddBindToggle(AimTab, "Aimbot", "AimbotEnabled", UDim2.new(0, 0, 0, 60))
+AddBindToggle(AimTab, "Triggerbot", "TriggerbotEnabled", UDim2.new(0, 0, 0, 120))
 AddToggle(AimTab, "Wall Check", "WallCheck", UDim2.new(0, 0, 0, 180))
 AddToggle(AimTab, "Team Check", "TeamCheck", UDim2.new(0, 0, 0, 240))
 AddSlider(AimTab, "Field of View", "FieldOfView", 10, 800, UDim2.new(0, 0, 0, 300))
