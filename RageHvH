@@ -1,0 +1,537 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+local Camera = Workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+-- [[ ГЛОБАЛЬНЫЙ КОНФИГ ]] --
+_G.Config = {
+    AimbotEnabled = false,
+    RagebotEnabled = false,
+    TriggerbotEnabled = false,
+    TeamCheck = true,
+    WallCheck = true,
+    AimPart = "Head",
+    Smoothness = 0,
+    FieldOfView = 100,
+    ShowFOVCircle = true,
+    
+    -- Player
+    SpeedEnabled = false,
+    JumpEnabled = false,
+    WalkSpeed = 16,
+    JumpPower = 50,
+    TeleportBind = nil,
+    
+    -- Misc & Menu
+    MenuBind = Enum.KeyCode.RightShift,
+    
+    -- Visuals
+    EspBoxes = false,
+    EspTracers = false,
+    EspBones = false,
+    
+    -- Colors
+    BoxColor = Color3.fromRGB(255, 0, 0),
+    TracerColor = Color3.fromRGB(255, 0, 0),
+    BoneColor = Color3.fromRGB(255, 255, 255),
+    MenuAccent = Color3.fromRGB(255, 0, 0),
+    Background = Color3.fromRGB(5, 5, 5),
+    
+    Binds = {
+        RagebotEnabled = nil,
+        AimbotEnabled = nil,
+        TriggerbotEnabled = nil
+    }
+}
+
+local IsRightMBDown = false
+local CurrentTarget = nil
+local BindingInProgress = nil
+
+-- [[ СИСТЕМА ЗВУКА ]] --
+local function PlayNotifySound()
+    local sound = Instance.new("Sound")
+    sound.SoundId = "rbxassetid://452267918"
+    sound.Volume = 1
+    sound.Parent = game:GetService("SoundService")
+    sound:Play()
+    sound.Ended:Connect(function() sound:Destroy() end)
+end
+
+-- [[ ИНТЕРФЕЙС УВЕДОМЛЕНИЙ ]] --
+local ScreenGui = Instance.new("ScreenGui", game:GetService("CoreGui"))
+ScreenGui.Name = "RageMenu"
+ScreenGui.ResetOnSpawn = false
+
+local NotifyHolder = Instance.new("Frame", ScreenGui)
+NotifyHolder.Size = UDim2.new(0, 250, 1, -20)
+NotifyHolder.Position = UDim2.new(1, -260, 0, 10)
+NotifyHolder.BackgroundTransparency = 1
+
+local NotifyLayout = Instance.new("UIListLayout", NotifyHolder)
+NotifyLayout.VerticalAlignment = "Bottom"
+NotifyLayout.Padding = UDim.new(0, 8)
+
+local function Notify(text)
+    PlayNotifySound()
+    local n = Instance.new("Frame", NotifyHolder)
+    n.Size = UDim2.new(1, 0, 0, 40)
+    n.BackgroundColor3 = _G.Config.Background
+    n.BorderSizePixel = 0
+    Instance.new("UICorner", n)
+    local s = Instance.new("UIStroke", n)
+    s.Color = _G.Config.MenuAccent
+    
+    local t = Instance.new("TextLabel", n)
+    t.Size = UDim2.new(1, 0, 1, 0)
+    t.BackgroundTransparency = 1
+    t.Text = text
+    t.TextColor3 = Color3.new(1, 1, 1)
+    t.Font = "GothamBold"
+    t.TextSize = 13
+    
+    n.Position = UDim2.new(1.5, 0, 0, 0)
+    TweenService:Create(n, TweenInfo.new(0.3), {Position = UDim2.new(0, 0, 0, 0)}):Play()
+    
+    task.delay(2.5, function()
+        if n then
+            TweenService:Create(n, TweenInfo.new(0.3), {Position = UDim2.new(1.5, 0, 0, 0)}):Play()
+            task.wait(0.3)
+            n:Destroy()
+        end
+    end)
+end
+
+-- [[ ОТРИСОВКА (DRAWING API) ]] --
+local function CreateDrawing(class, props)
+    local obj = Drawing.new(class)
+    for i, v in pairs(props) do obj[i] = v end
+    return obj
+end
+
+local FOVCircle = CreateDrawing("Circle", {
+    Thickness = 1.5,
+    Color = _G.Config.MenuAccent,
+    Transparency = 1,
+    Filled = false,
+    Visible = false
+})
+
+-- [[ ГЛАВНОЕ МЕНЮ ]] --
+local Main = Instance.new("Frame", ScreenGui)
+Main.Size = UDim2.new(0, 640, 0, 660)
+Main.Position = UDim2.new(0.5, -320, 0.5, -330)
+Main.BackgroundColor3 = _G.Config.Background
+Main.Active = true
+Main.Draggable = true
+Instance.new("UICorner", Main)
+local MainStroke = Instance.new("UIStroke", Main)
+MainStroke.Color = _G.Config.MenuAccent
+
+-- Шапка
+local Header = Instance.new("Frame", Main)
+Header.Size = UDim2.new(1, 0, 0, 110)
+Header.BackgroundTransparency = 1
+
+local Logo = Instance.new("ImageLabel", Header)
+Logo.Size = UDim2.new(0, 85, 0, 85)
+Logo.Position = UDim2.new(0, 20, 0, 12)
+Logo.BackgroundTransparency = 1
+Logo.Image = "rbxassetid://6031094678"
+Logo.ImageColor3 = _G.Config.MenuAccent
+
+local Title = Instance.new("TextLabel", Header)
+Title.Size = UDim2.new(1, -120, 1, 0)
+Title.Position = UDim2.new(0, 120, 0, 0)
+Title.Text = "RageMenu V24"
+Title.Font = "GothamBold"
+Title.TextSize = 44
+Title.TextColor3 = Color3.new(1, 1, 1)
+Title.TextXAlignment = "Left"
+Title.BackgroundTransparency = 1
+
+-- Навигация
+local Nav = Instance.new("Frame", Main)
+Nav.Position = UDim2.new(0, 20, 0, 125)
+Nav.Size = UDim2.new(0, 180, 1, -145)
+Nav.BackgroundTransparency = 1
+
+local Pages = Instance.new("Frame", Main)
+Pages.Position = UDim2.new(0, 220, 0, 125)
+Pages.Size = UDim2.new(1, -240, 1, -145)
+Pages.BackgroundTransparency = 1
+
+local AimTab = Instance.new("ScrollingFrame", Pages)
+local VisTab = Instance.new("ScrollingFrame", Pages)
+local PlayerTab = Instance.new("ScrollingFrame", Pages)
+local MiscTab = Instance.new("ScrollingFrame", Pages)
+
+for _, t in pairs({AimTab, VisTab, PlayerTab, MiscTab}) do
+    t.Size = UDim2.new(1, 0, 1, 0)
+    t.BackgroundTransparency = 1
+    t.ScrollBarThickness = 2
+    t.Visible = false
+    t.CanvasSize = UDim2.new(0, 0, 2, 0)
+end
+AimTab.Visible = true
+
+local function AddNav(name, pos, page)
+    local b = Instance.new("TextButton", Nav)
+    b.Size = UDim2.new(1, 0, 0, 50)
+    b.Position = pos
+    b.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    b.Text = name
+    b.TextColor3 = Color3.new(1, 1, 1)
+    b.Font = "GothamBold"
+    b.TextSize = 18
+    Instance.new("UICorner", b)
+    b.MouseButton1Click:Connect(function()
+        AimTab.Visible = false; VisTab.Visible = false; PlayerTab.Visible = false; MiscTab.Visible = false
+        page.Visible = true
+    end)
+end
+
+AddNav("COMBAT", UDim2.new(0,0,0,0), AimTab)
+AddNav("VISUALS", UDim2.new(0,0,0,60), VisTab)
+AddNav("PLAYER", UDim2.new(0,0,0,120), PlayerTab)
+AddNav("MISC", UDim2.new(0,0,0,180), MiscTab)
+
+-- [[ КОНСТРУКТОРЫ UI ]] --
+
+local function AddBindToggle(parent, label, key, pos)
+    local Container = Instance.new("Frame", parent)
+    Container.Size = UDim2.new(1, -15, 0, 50)
+    Container.Position = pos
+    Container.BackgroundTransparency = 1
+    
+    local b = Instance.new("TextButton", Container)
+    b.Size = UDim2.new(0.7, -5, 1, 0)
+    b.BackgroundColor3 = _G.Config[key] and _G.Config.MenuAccent or Color3.fromRGB(30, 30, 30)
+    b.Text = label .. ": " .. (_G.Config[key] and "ON" or "OFF")
+    b.TextColor3 = Color3.new(1, 1, 1)
+    b.Font = "GothamBold"
+    b.TextSize = 16
+    Instance.new("UICorner", b)
+    
+    local bindBtn = Instance.new("TextButton", Container)
+    bindBtn.Size = UDim2.new(0.3, 0, 1, 0)
+    bindBtn.Position = UDim2.new(0.7, 5, 0, 0)
+    bindBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    bindBtn.Text = (_G.Config.Binds[key] and "[".._G.Config.Binds[key].Name.."]") or "[NONE]"
+    bindBtn.TextColor3 = Color3.new(1, 1, 1)
+    bindBtn.Font = "GothamBold"
+    bindBtn.TextSize = 12
+    Instance.new("UICorner", bindBtn)
+
+    local function Toggle()
+        _G.Config[key] = not _G.Config[key]
+        b.Text = label .. ": " .. (_G.Config[key] and "ON" or "OFF")
+        b.BackgroundColor3 = _G.Config[key] and _G.Config.MenuAccent or Color3.fromRGB(30, 30, 30)
+        Notify(label .. " -> " .. (_G.Config[key] and "ON" or "OFF"))
+    end
+    
+    b.MouseButton1Click:Connect(Toggle)
+    bindBtn.MouseButton1Click:Connect(function() BindingInProgress = key; bindBtn.Text = "..." end)
+    
+    UserInputService.InputBegan:Connect(function(i, gpe)
+        if BindingInProgress == key and i.UserInputType == Enum.UserInputType.Keyboard then
+            _G.Config.Binds[key] = i.KeyCode
+            bindBtn.Text = "["..i.KeyCode.Name.."]"
+            BindingInProgress = nil
+        elseif not gpe and _G.Config.Binds[key] == i.KeyCode then
+            Toggle()
+        end
+    end)
+end
+
+local function AddToggle(parent, label, key, pos)
+    local b = Instance.new("TextButton", parent)
+    b.Size = UDim2.new(1, -15, 0, 50)
+    b.Position = pos
+    b.BackgroundColor3 = _G.Config[key] and _G.Config.MenuAccent or Color3.fromRGB(30, 30, 30)
+    b.Text = label .. ": " .. (_G.Config[key] and "ON" or "OFF")
+    b.TextColor3 = Color3.new(1, 1, 1)
+    b.Font = "GothamBold"
+    b.TextSize = 16
+    Instance.new("UICorner", b)
+    
+    b.MouseButton1Click:Connect(function()
+        _G.Config[key] = not _G.Config[key]
+        b.Text = label .. ": " .. (_G.Config[key] and "ON" or "OFF")
+        b.BackgroundColor3 = _G.Config[key] and _G.Config.MenuAccent or Color3.fromRGB(30, 30, 30)
+        Notify(label .. " updated")
+    end)
+end
+
+local function AddSlider(parent, label, key, min, max, pos)
+    local t = Instance.new("TextLabel", parent)
+    t.Size = UDim2.new(1, -15, 0, 30); t.Position = pos; t.BackgroundTransparency = 1
+    t.TextColor3 = Color3.new(1, 1, 1); t.Text = label .. ": " .. math.floor(_G.Config[key])
+    t.Font = "GothamBold"; t.TextXAlignment = "Left"
+    
+    local b = Instance.new("Frame", parent)
+    b.Size = UDim2.new(1, -15, 0, 14); b.Position = pos + UDim2.new(0, 0, 0, 35)
+    b.BackgroundColor3 = Color3.fromRGB(40, 40, 40); Instance.new("UICorner", b)
+    
+    local f = Instance.new("Frame", b)
+    f.Size = UDim2.new((_G.Config[key]-min)/(max-min), 0, 1, 0)
+    f.BackgroundColor3 = _G.Config.MenuAccent; Instance.new("UICorner", f)
+    
+    b.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+            local connection
+            connection = RunService.RenderStepped:Connect(function()
+                local rel = math.clamp((UserInputService:GetMouseLocation().X - b.AbsolutePosition.X) / b.AbsoluteSize.X, 0, 1)
+                _G.Config[key] = min + (max - min) * rel
+                f.Size = UDim2.new(rel, 0, 1, 0)
+                t.Text = label .. ": " .. math.floor(_G.Config[key])
+            end)
+            UserInputService.InputEnded:Connect(function(e)
+                if e.UserInputType == Enum.UserInputType.MouseButton1 then connection:Disconnect() end
+            end)
+        end
+    end)
+end
+
+-- Combat
+AddBindToggle(AimTab, "Ragebot", "RagebotEnabled", UDim2.new(0,0,0,0))
+AddBindToggle(AimTab, "Aimbot", "AimbotEnabled", UDim2.new(0,0,0,60))
+AddBindToggle(AimTab, "Triggerbot", "TriggerbotEnabled", UDim2.new(0,0,0,120))
+AddToggle(AimTab, "Wall Check", "WallCheck", UDim2.new(0,0,0,180))
+AddToggle(AimTab, "Team Check", "TeamCheck", UDim2.new(0,0,0,240))
+AddSlider(AimTab, "Field of View", "FieldOfView", 10, 800, UDim2.new(0,0,0,300))
+AddSlider(AimTab, "Smoothness", "Smoothness", 0, 100, UDim2.new(0,0,0,365))
+
+-- Visuals
+AddToggle(VisTab, "Show Tracers", "EspTracers", UDim2.new(0,0,0,0))
+AddToggle(VisTab, "Show Bones", "EspBones", UDim2.new(0,0,0,60))
+AddToggle(VisTab, "Show Boxes", "EspBoxes", UDim2.new(0,0,0,120))
+
+-- Player
+AddToggle(PlayerTab, "Enable Speed", "SpeedEnabled", UDim2.new(0,0,0,0))
+AddSlider(PlayerTab, "WalkSpeed Value", "WalkSpeed", 16, 300, UDim2.new(0,0,0,50))
+AddToggle(PlayerTab, "Enable Jump", "JumpEnabled", UDim2.new(0,0,0,115))
+AddSlider(PlayerTab, "JumpPower Value", "JumpPower", 50, 500, UDim2.new(0,0,0,165))
+
+local TPContainer = Instance.new("Frame", PlayerTab)
+TPContainer.Size = UDim2.new(1, -15, 0, 50); TPContainer.Position = UDim2.new(0,0,0,230); TPContainer.BackgroundTransparency = 1
+local TPLbl = Instance.new("TextLabel", TPContainer)
+TPLbl.Size = UDim2.new(0.6, 0, 1, 0); TPLbl.BackgroundTransparency = 1; TPLbl.Text = "Click Teleport Bind:"; TPLbl.TextColor3 = Color3.new(1,1,1); TPLbl.Font = "GothamBold"; TPLbl.TextXAlignment = "Left"
+local TPBindBtn = Instance.new("TextButton", TPContainer)
+TPBindBtn.Size = UDim2.new(0.4, 0, 1, 0); TPBindBtn.Position = UDim2.new(0.6, 0, 0, 0); TPBindBtn.BackgroundColor3 = Color3.fromRGB(40,40,40); TPBindBtn.Text = "[NONE]"; TPBindBtn.TextColor3 = Color3.new(1,1,1); TPBindBtn.Font = "GothamBold"; Instance.new("UICorner", TPBindBtn)
+
+TPBindBtn.MouseButton1Click:Connect(function() BindingInProgress = "TeleportBind"; TPBindBtn.Text = "..." end)
+
+-- Misc
+local function AddSimpleBtn(parent, text, pos, func)
+    local b = Instance.new("TextButton", parent)
+    b.Size = UDim2.new(1, -15, 0, 50); b.Position = pos; b.BackgroundColor3 = Color3.fromRGB(30, 30, 30); b.Text = text; b.TextColor3 = Color3.new(1,1,1); b.Font = "GothamBold"; Instance.new("UICorner", b)
+    b.MouseButton1Click:Connect(func)
+end
+
+-- FIXED REJOIN (SAME SERVER)
+AddSimpleBtn(MiscTab, "Rejoin Same Server", UDim2.new(0,0,0,0), function()
+    Notify("Rejoining current server...")
+    TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+end)
+
+-- FIXED SERVER HOP (NEW SERVER)
+AddSimpleBtn(MiscTab, "Server Hop", UDim2.new(0,0,0,60), function()
+    Notify("Searching for new server...")
+    local success, result = pcall(function()
+        local url = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
+        local data = HttpService:JSONDecode(game:HttpGet(url)).data
+        for _, s in pairs(data) do
+            if s.playing < s.maxPlayers and s.id ~= game.JobId then
+                TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id, LocalPlayer)
+                return
+            end
+        end
+    end)
+    if not success then Notify("Hop Failed!") TeleportService:Teleport(game.PlaceId) end
+end)
+
+local MenuBindContainer = Instance.new("Frame", MiscTab)
+MenuBindContainer.Size = UDim2.new(1, -15, 0, 50); MenuBindContainer.Position = UDim2.new(0,0,0,120); MenuBindContainer.BackgroundTransparency = 1
+local MenuBindLbl = Instance.new("TextLabel", MenuBindContainer)
+MenuBindLbl.Size = UDim2.new(0.6, 0, 1, 0); MenuBindLbl.BackgroundTransparency = 1; MenuBindLbl.Text = "Menu Bind:"; MenuBindLbl.TextColor3 = Color3.new(1,1,1); MenuBindLbl.Font = "GothamBold"; MenuBindLbl.TextXAlignment = "Left"
+local MenuBindBtn = Instance.new("TextButton", MenuBindContainer)
+MenuBindBtn.Size = UDim2.new(0.4, 0, 1, 0); MenuBindBtn.Position = UDim2.new(0.6, 0, 0, 0); MenuBindBtn.BackgroundColor3 = Color3.fromRGB(40,40,40); MenuBindBtn.Text = "[R-SHIFT]"; MenuBindBtn.TextColor3 = Color3.new(1,1,1); MenuBindBtn.Font = "GothamBold"; Instance.new("UICorner", MenuBindBtn)
+
+MenuBindBtn.MouseButton1Click:Connect(function() BindingInProgress = "MenuBind"; MenuBindBtn.Text = "..." end)
+
+-- [[ ЛОГИКА COMBAT ]] --
+
+local function CheckVisibility(part)
+    if not _G.Config.WallCheck then return true end
+    if not LocalPlayer.Character then return false end
+    local params = RaycastParams.new()
+    params.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
+    params.FilterType = Enum.RaycastFilterType.Blacklist
+    local ray = Workspace:Raycast(Camera.CFrame.Position, (part.Position - Camera.CFrame.Position).Unit * 1000, params)
+    return (ray and ray.Instance:IsDescendantOf(part.Parent))
+end
+
+local function GetTarget()
+    local target, dist = nil, math.huge
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild(_G.Config.AimPart) and p.Character:FindFirstChild("Humanoid") then
+            if p.Character.Humanoid.Health > 0 and (not _G.Config.TeamCheck or p.Team ~= LocalPlayer.Team) then
+                local part = p.Character[_G.Config.AimPart]
+                if CheckVisibility(part) then
+                    local sPos, os = Camera:WorldToViewportPoint(part.Position)
+                    if _G.Config.RagebotEnabled then
+                        local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                        local d3 = root and (part.Position - root.Position).Magnitude or 1000
+                        if d3 < dist then target = p; dist = d3 end
+                    elseif _G.Config.AimbotEnabled and os then
+                        local d2 = (Vector2.new(sPos.X, sPos.Y) - UserInputService:GetMouseLocation()).Magnitude
+                        if d2 < _G.Config.FieldOfView and d2 < dist then target = p; dist = d2 end
+                    end
+                end
+            end
+        end
+    end
+    return target
+end
+
+RunService.RenderStepped:Connect(function()
+    FOVCircle.Visible = _G.Config.ShowFOVCircle and not _G.Config.RagebotEnabled
+    FOVCircle.Radius = _G.Config.FieldOfView
+    FOVCircle.Position = UserInputService:GetMouseLocation()
+    
+    if _G.Config.RagebotEnabled or (IsRightMBDown and _G.Config.AimbotEnabled) then
+        CurrentTarget = GetTarget()
+        if CurrentTarget then
+            local pos = CurrentTarget.Character[_G.Config.AimPart].Position
+            if _G.Config.RagebotEnabled then
+                Camera.CFrame = CFrame.new(Camera.CFrame.Position, pos)
+            else
+                Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, pos), 1-(_G.Config.Smoothness/100))
+            end
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(0.01) do
+        if _G.Config.TriggerbotEnabled or _G.Config.RagebotEnabled then
+            local shouldShot = false
+            if _G.Config.RagebotEnabled and CurrentTarget then
+                shouldShot = true
+            else
+                local ray = Camera:ViewportPointToRay(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+                local res = Workspace:Raycast(ray.Origin, ray.Direction * 1000)
+                if res and res.Instance then
+                    local p = Players:GetPlayerFromCharacter(res.Instance.Parent) or Players:GetPlayerFromCharacter(res.Instance.Parent.Parent)
+                    if p and p ~= LocalPlayer and p.Character.Humanoid.Health > 0 then
+                        if not _G.Config.TeamCheck or p.Team ~= LocalPlayer.Team then shouldShot = true end
+                    end
+                end
+            end
+            if shouldShot then mouse1press(); task.wait(0.02); mouse1release() end
+        end
+    end
+end)
+
+-- [[ ЛОГИКА VISUALS ]] --
+
+local function InitESP(p)
+    local T = CreateDrawing("Line", {Thickness = 1.5, Color = _G.Config.TracerColor, Visible = false})
+    local B = CreateDrawing("Square", {Thickness = 1.5, Color = _G.Config.BoxColor, Filled = false, Visible = false})
+    local S = {}; for i=1,10 do S[i] = CreateDrawing("Line", {Thickness = 1.2, Color = _G.Config.BoneColor, Visible = false}) end
+    
+    local BoneMap = {
+        {"Head", "UpperTorso"}, {"UpperTorso", "LowerTorso"}, 
+        {"UpperTorso", "LeftUpperArm"}, {"LeftUpperArm", "LeftLowerArm"}, 
+        {"UpperTorso", "RightUpperArm"}, {"RightUpperArm", "RightLowerArm"},
+        {"LowerTorso", "LeftUpperLeg"}, {"LeftUpperLeg", "LeftLowerLeg"},
+        {"LowerTorso", "RightUpperLeg"}, {"RightUpperLeg", "RightLowerLeg"}
+    }
+
+    RunService.RenderStepped:Connect(function()
+        if not p.Parent or not p.Character or p.Character:FindFirstChild("Humanoid") == nil or p.Character.Humanoid.Health <= 0 then
+            T.Visible = false; B.Visible = false; for _,v in pairs(S) do v.Visible = false end return
+        end
+        
+        local root = p.Character:FindFirstChild("HumanoidRootPart")
+        if root and p ~= LocalPlayer and (not _G.Config.TeamCheck or p.Team ~= LocalPlayer.Team) then
+            local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
+            if onScreen then
+                if _G.Config.EspTracers then
+                    T.Visible = true; T.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y); T.To = Vector2.new(pos.X, pos.Y)
+                else T.Visible = false end
+                
+                if _G.Config.EspBoxes then
+                    local top = Camera:WorldToViewportPoint(root.Position + Vector3.new(0, 3.8, 0))
+                    local bottom = Camera:WorldToViewportPoint(root.Position + Vector3.new(0, -4.5, 0))
+                    local height = math.abs(top.Y - bottom.Y)
+                    B.Visible = true; B.Size = Vector2.new(height * 0.6, height); B.Position = Vector2.new(pos.X - B.Size.X/2, pos.Y - B.Size.Y/2)
+                else B.Visible = false end
+                
+                if _G.Config.EspBones then
+                    for i, map in pairs(BoneMap) do
+                        local part1 = p.Character:FindFirstChild(map[1]); local part2 = p.Character:FindFirstChild(map[2])
+                        if part1 and part2 then
+                            local v1, os1 = Camera:WorldToViewportPoint(part1.Position); local v2, os2 = Camera:WorldToViewportPoint(part2.Position)
+                            if os1 and os2 then
+                                S[i].Visible = true; S[i].From = Vector2.new(v1.X, v1.Y); S[i].To = Vector2.new(v2.X, v2.Y)
+                            else S[i].Visible = false end
+                        else S[i].Visible = false end
+                    end
+                else for _,v in pairs(S) do v.Visible = false end end
+            else T.Visible = false; B.Visible = false; for _,v in pairs(S) do v.Visible = false end end
+        else T.Visible = false; B.Visible = false; for _,v in pairs(S) do v.Visible = false end end
+    end)
+end
+
+for _, p in pairs(Players:GetPlayers()) do InitESP(p) end
+Players.PlayerAdded:Connect(InitESP)
+
+-- [[ ЛОГИКА PLAYER ]] --
+
+RunService.Heartbeat:Connect(function()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        local hum = LocalPlayer.Character.Humanoid
+        if _G.Config.SpeedEnabled then hum.WalkSpeed = _G.Config.WalkSpeed end
+        if _G.Config.JumpEnabled then 
+            hum.UseJumpPower = true 
+            hum.JumpPower = _G.Config.JumpPower 
+        end
+    end
+end)
+
+local function MouseTP()
+    local mouse = LocalPlayer:GetMouse()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        if mouse.Target then
+            LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(mouse.Hit.p + Vector3.new(0, 3, 0))
+            Notify("Teleported!")
+        end
+    end
+end
+
+-- [[ ОБРАБОТКА ВВОДА ]] --
+
+UserInputService.InputBegan:Connect(function(i, gpe)
+    if BindingInProgress == "MenuBind" and i.UserInputType == Enum.UserInputType.Keyboard then
+        _G.Config.MenuBind = i.KeyCode; MenuBindBtn.Text = "["..i.KeyCode.Name.."]"; BindingInProgress = nil
+    elseif BindingInProgress == "TeleportBind" and i.UserInputType == Enum.UserInputType.Keyboard then
+        _G.Config.TeleportBind = i.KeyCode; TPBindBtn.Text = "["..i.KeyCode.Name.."]"; BindingInProgress = nil
+    elseif not gpe and i.KeyCode == _G.Config.MenuBind then
+        Main.Visible = not Main.Visible
+    elseif not gpe and i.KeyCode == _G.Config.TeleportBind then
+        MouseTP()
+    end
+    
+    if i.UserInputType == Enum.UserInputType.MouseButton2 then IsRightMBDown = true end
+end)
+
+UserInputService.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton2 then IsRightMBDown = false end
+end)
